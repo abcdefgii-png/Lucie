@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>For 阮阮 ✦</title>
+    <style>
+        /* =========================================
+           CSS Styles
+           ========================================= */
+        :root {
+            --color-bg: #050505;
+            --color-text-main: #e0e0e0;
+            --color-text-sub: #a0a0a0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: var(--color-bg);
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to canvas if needed */
+        }
+
+        /* Top Left Title */
+        .header-text {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 14px;
+            color: var(--color-text-main);
+            opacity: 0.6;
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Bottom Center Hint */
+        .hint-text {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 14px;
+            color: var(--color-text-main);
+            opacity: 0.6;
+            line-height: 1.6;
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+            transition: opacity 0.5s ease;
+        }
+
+        /* Cat Message */
+        .message-text {
+            position: absolute;
+            top: 45%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 18px;
+            color: #ffffff;
+            opacity: 0; /* Hidden by default */
+            letter-spacing: 2px;
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+            transition: opacity 2s ease;
+            font-weight: 300;
+        }
+
+        /* Easter Egg Message */
+        .easter-egg-text {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            font-size: 16px;
+            color: #ffecd1; /* Warm light */
+            opacity: 0;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(255, 200, 150, 0.8);
+            transition: opacity 1s ease;
+            font-family: 'Georgia', serif;
+            font-style: italic;
+        }
+
+        /* Camera Preview */
+        #camera-preview {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 160px;
+            height: 120px;
+            border-radius: 8px;
+            opacity: 0.3;
+            transform: scaleX(-1); /* Mirror */
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 20;
+            object-fit: cover;
+        }
+
+        /* Audio Controls */
+        .audio-control {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: var(--color-text-main);
+            font-size: 20px;
+            cursor: pointer;
+            opacity: 0.7;
+            pointer-events: auto;
+            z-index: 20;
+            background: none;
+            border: none;
+            padding: 5px;
+        }
+        .audio-control:hover {
+            opacity: 1;
+        }
+
+        /* Loading Screen */
+        #loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #fff;
+            z-index: 100;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .spinner {
+            width: 30px;
+            height: 30px;
+            border: 2px solid #333;
+            border-top: 2px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Warm Overlay for Easter Egg */
+        #warm-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(255, 220, 180, 0.15) 0%, transparent 70%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 2s ease;
+            z-index: 5;
+        }
+    </style>
+
+    <!-- Import Maps for Three.js and Addons -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- MediaPipe Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loading">
+        <div class="spinner"></div>
+        <div style="font-size: 12px; opacity: 0.7;">Initializing Galaxy & Hands...</div>
+        <div style="font-size: 10px; opacity: 0.5; margin-top: 10px;">Please allow camera access</div>
+    </div>
+
+    <!-- Audio Elements -->
+    <!-- Note: Using placeholder public domain/creative commons audio. Replace src if needed. -->
+    <audio id="bgm" loop>
+        <source src="https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=space-atmosphere-114389.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="sfx-chime">
+        <!-- Short chime sound -->
+        <source src="https://cdn.pixabay.com/download/audio/2022/03/24/audio_c8c8a73467.mp3?filename=wind-chimes-20150.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- UI Layer -->
+    <div id="ui-layer">
+        <div class="header-text">For 阮阮 ✦</div>
+        
+        <button id="mute-btn" class="audio-control">🔇</button>
+
+        <div class="message-text" id="cat-message">
+            它从未真正离开<br>只是换一种方式在你身边
+        </div>
+
+        <div class="easter-egg-text" id="easter-egg-msg">
+            Love is the one thing that transcends time and space.
+        </div>
+
+        <div class="hint-text" id="hint-text">
+            握拳 Fist：星星会聚在一起<br>
+            张开 Open：它会回到星空
+        </div>
+    </div>
+
+    <!-- Warm Overlay -->
+    <div id="warm-overlay"></div>
+
+    <!-- Camera Preview -->
+    <video id="camera-preview" playsinline></video>
+
+    <!-- Three.js Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Main Script -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+        // =========================================
+        // Configuration
+        // =========================================
+        const CONFIG = {
+            particleCount: 4000,
+            colors: {
+                dust: new THREE.Color(0xDADADA),
+                star: new THREE.Color(0xFFFFFF),
+                bright: new THREE.Color(0xF5F5F5)
+            },
+            bloom: {
+                strength: 1.2,
+                radius: 0.4,
+                threshold: 0.1
+            },
+            cat: {
+                scale: 2.5,
+                yOffset: -10
+            }
+        };
+
+        // =========================================
+        // State Management
+        // =========================================
+        const STATE = {
+            IDLE: 'IDLE',
+            GATHER: 'GATHER',
+            RELEASE: 'RELEASE'
+        };
+
+        let appState = {
+            current: STATE.IDLE,
+            gesture: 'open', // 'fist' or 'open'
+            gestureHistory: [], // For stabilization
+            catFormedTime: 0,
+            isCatFormed: false,
+            easterEggTriggered: false,
+            handPosition: { x: 0.5, y: 0.5 } // Normalized 0-1
+        };
+
+        // =========================================
+        // Three.js Setup
+        // =========================================
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x050505, 0.002);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 100;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        container.appendChild(renderer.domElement);
+
+        // Post-processing (Bloom)
+        const renderScene = new RenderPass(scene, camera);
+        const bloomPass = new UnrealBloomPass(
+            new THREE.Vector2(window.innerWidth, window.innerHeight),
+            CONFIG.bloom.strength,
+            CONFIG.bloom.radius,
+            CONFIG.bloom.threshold
+        );
+
+        const composer = new EffectComposer(renderer);
+        composer.addPass(renderScene);
+        composer.addPass(bloomPass);
+
+        // =========================================
+        // Particle System
+        // =========================================
+        
+        // Geometry Data
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(CONFIG.particleCount * 3);
+        const targetPositions = new Float32Array(CONFIG.particleCount * 3); // Where they want to go
+        const galaxyPositions = new Float32Array(CONFIG.particleCount * 3); // Galaxy home
+        const catPositions = new Float32Array(CONFIG.particleCount * 3);    // Cat shape home
+        const colors = new Float32Array(CONFIG.particleCount * 3);
+        const sizes = new Float32Array(CONFIG.particleCount);
+        const randomOffsets = new Float32Array(CONFIG.particleCount * 3); // For floating noise
+
+        // 1. Generate Galaxy Shape (Diagonal Band)
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+            // Random distribution with denser center
+            const r = Math.random() * 80;
+            const theta = Math.random() * Math.PI * 2;
+            
+            // Flatten to make a disk/band
+            // Rotate 45 degrees for diagonal effect
+            const spread = (Math.random() - 0.5) * 30; // Thickness of band
+            const length = (Math.random() - 0.5) * 140; // Length of band
+            
+            // Base galaxy position (Diagonal)
+            const x = length * Math.cos(Math.PI / 4) - spread * Math.sin(Math.PI / 4);
+            const y = length * Math.sin(Math.PI / 4) + spread * Math.cos(Math.PI / 4);
+            const z = (Math.random() - 0.5) * 20; // Depth
+
+            galaxyPositions[i * 3] = x;
+            galaxyPositions[i * 3 + 1] = y;
+            galaxyPositions[i * 3 + 2] = z;
+
+            // Initial positions = galaxy positions
+            positions[i * 3] = x;
+            positions[i * 3 + 1] = y;
+            positions[i * 3 + 2] = z;
+
+            // Colors & Sizes
+            const type = Math.random();
+            let color;
+            if (type > 0.95) { // Bright star
+                color = CONFIG.colors.bright;
+                sizes[i] = Math.random() * 2 + 4; // 4-6px
+            } else if (type > 0.7) { // Normal star
+                color = CONFIG.colors.star;
+                sizes[i] = Math.random() * 1.5 + 1.5; // 1.5-3px
+            } else { // Dust
+                color = CONFIG.colors.dust;
+                sizes[i] = Math.random() * 1.0; // 0-1px
+            }
+
+            colors[i * 3] = color.r;
+            colors[i * 3 + 1] = color.g;
+            colors[i * 3 + 2] = color.b;
+
+            // Random offsets for floating animation
+            randomOffsets[i * 3] = Math.random() * 100;
+            randomOffsets[i * 3 + 1] = Math.random() * 100;
+            randomOffsets[i * 3 + 2] = Math.random() * 100;
+        }
+
+        // 2. Generate Cat Shape (Procedural 2D Silhouette)
+        // Helper to get a random point inside a circle
+        function getRandomPointInCircle(cx, cy, r) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.sqrt(Math.random()) * r;
+            return {
+                x: cx + radius * Math.cos(angle),
+                y: cy + radius * Math.sin(angle)
+            };
+        }
+
+        // Helper to get a random point inside an ellipse
+        function getRandomPointInEllipse(cx, cy, rx, ry, rotation = 0) {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.sqrt(Math.random());
+            const x = radius * rx * Math.cos(angle);
+            const y = radius * ry * Math.sin(angle);
+            // Rotate
+            const rotX = x * Math.cos(rotation) - y * Math.sin(rotation);
+            const rotY = x * Math.sin(rotation) + y * Math.cos(rotation);
+            return { x: cx + rotX, y: cy + rotY };
+        }
+
+        // Helper for triangle (Ears)
+        function getRandomPointInTriangle(p1, p2, p3) {
+            let r1 = Math.random();
+            let r2 = Math.random();
+            if (r1 + r2 > 1) {
+                r1 = 1 - r1;
+                r2 = 1 - r2;
+            }
+            return {
+                x: p1.x + r1 * (p2.x - p1.x) + r2 * (p3.x - p1.x),
+                y: p1.y + r1 * (p2.y - p1.y) + r2 * (p3.y - p1.y)
+            };
+        }
+
+        // Generate Cat Points
+        for (let i = 0; i < CONFIG.particleCount; i++) {
+            let p = {x:0, y:0, z:0};
+            const part = Math.random();
+            
+            // Cat Proportions
+            // Head: 20%
+            // Body: 40%
+            // Tail: 15%
+            // Ears: 10%
+            // Scatter/Aura: 15% (to make it look soft)
+
+            const scale = CONFIG.cat.scale;
+            const yOff = CONFIG.cat.yOffset;
+
+            if (part < 0.25) { 
+                // Head (Circle) at (0, 12)
+                p = getRandomPointInCircle(0, 12 * scale, 9 * scale);
+            } else if (part < 0.65) {
+                // Body (Ellipse) at (0, -5)
+                p = getRandomPointInEllipse(0, -5 * scale, 11 * scale, 16 * scale);
+            } else if (part < 0.75) {
+                // Ears (Triangles)
+                if (Math.random() > 0.5) {
+                    // Left Ear
+                    p = getRandomPointInTriangle(
+                        {x: -7 * scale, y: 18 * scale},
+                        {x: -3 * scale, y: 25 * scale},
+                        {x: -1 * scale, y: 19 * scale}
+                    );
+                } else {
+                    // Right Ear
+                    p = getRandomPointInTriangle(
+                        {x: 7 * scale, y: 18 * scale},
+                        {x: 3 * scale, y: 25 * scale},
+                        {x: 1 * scale, y: 19 * scale}
+                    );
+                }
+            } else if (part < 0.90) {
+                // Tail (Bezier-ish curve approximated by sine)
+                const t = Math.random() * Math.PI; // 0 to PI
+                // Tail starts bottom right of body approx (5, -15)
+                // Curves up to (15, 0)
+                const tx = 5 * scale + (t / Math.PI) * 15 * scale;
+                const ty = -15 * scale + Math.sin(t) * 15 * scale;
+                // Add thickness
+                const thickness = Math.random() * 2 * scale;
+                p = { x: tx + (Math.random()-0.5)*thickness, y: ty + (Math.random()-0.5)*thickness };
+            } else {
+                // Aura/Scatter around the cat
+                p = getRandomPointInCircle(0, 0, 25 * scale);
+                p.z = (Math.random() - 0.5) * 10; // More depth for aura
+            }
+
+            catPositions[i * 3] = p.x;
+            catPositions[i * 3 + 1] = p.y + yOff;
+            catPositions[i * 3 + 2] = (Math.random() - 0.5) * 5; // Flat-ish cat
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        // Material
+        // Custom shader not strictly needed if we use PointsMaterial with vertexColors, 
+        // but for "size" attribute support we usually need a shader or just use constant size.
+        // To keep it simple and robust in one file, we'll use standard PointsMaterial 
+        // but we can't easily vary size per particle without a shader.
+        // Let's use a simple Texture for the particle to make it look soft.
+        
+        // Create a soft glow texture programmatically
+        const getTexture = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const context = canvas.getContext('2d');
+            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            gradient.addColorStop(0, 'rgba(255,255,255,1)');
+            gradient.addColorStop(0.2, 'rgba(255,255,255,0.8)');
+            gradient.addColorStop(0.5, 'rgba(255,255,255,0.2)');
+            gradient.addColorStop(1, 'rgba(0,0,0,0)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 32, 32);
+            const texture = new THREE.Texture(canvas);
+            texture.needsUpdate = true;
+            return texture;
+        };
+
+        const material = new THREE.PointsMaterial({
+            size: 1.5, // Base size, we can't vary this easily per-vertex in vanilla PointsMaterial without shader modification.
+            // However, we can simulate size variation by alpha or just accepting uniform size for simplicity in "Points".
+            // Or we can use a custom shader. Let's use a custom shader for best "Glow" and "Size" control.
+            vertexColors: true,
+            map: getTexture(),
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        // Let's stick to PointsMaterial for stability. The bloom will handle the glow.
+        // We will just set a slightly larger base size.
+        material.size = 2.0;
+
+        const particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // =========================================
+        // Audio Logic
+        // =========================================
+        const bgm = document.getElementById('bgm');
+        const sfxChime = document.getElementById('sfx-chime');
+        const muteBtn = document.getElementById('mute-btn');
+        let isMuted = true;
+
+        muteBtn.addEventListener('click', () => {
+            isMuted = !isMuted;
+            muteBtn.textContent = isMuted ? '🔇' : '🔊';
+            if (!isMuted) {
+                bgm.volume = 0.3;
+                bgm.play().catch(e => console.log("Audio autoplay blocked", e));
+            } else {
+                bgm.pause();
+            }
+        });
+
+        function playChime() {
+            if (!isMuted) {
+                sfxChime.volume = 0.5;
+                sfxChime.currentTime = 0;
+                sfxChime.play().catch(e => {});
+            }
+        }
+
+        // =========================================
+        // MediaPipe Hands Setup
+        // =========================================
+        const videoElement = document.getElementById('camera-preview');
+        const loadingScreen = document.getElementById('loading');
+        
+        function onResults(results) {
+            // Hide loading screen on first successful result
+            if (loadingScreen.style.display !== 'none') {
+                loadingScreen.style.display = 'none';
+            }
+
+            let detectedGesture = 'open'; // Default
+            let handPos = { x: 0.5, y: 0.5 };
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // 1. Detect Gesture
+                // Simple algorithm: Check if fingertips are below finger PIP joints (for upright hand)
+                // Or calculate distance from wrist to tips vs wrist to PIP.
+                // Distance method is more robust for rotation.
+                
+                const wrist = landmarks[0];
+                const tips = [8, 12, 16, 20]; // Index, Middle, Ring, Pinky tips
+                const pips = [6, 10, 14, 18]; // Corresponding PIP joints
+                
+                let foldedFingers = 0;
+                
+                // Calculate distance from wrist
+                function dist(p1, p2) {
+                    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+                }
+
+                for (let i = 0; i < 4; i++) {
+                    const dTip = dist(wrist, landmarks[tips[i]]);
+                    const dPip = dist(wrist, landmarks[pips[i]]);
+                    if (dTip < dPip) {
+                        foldedFingers++;
+                    }
+                }
+
+                // Thumb check (tip vs IP)
+                const dThumbTip = dist(wrist, landmarks[4]);
+                const dThumbIp = dist(wrist, landmarks[3]);
+                if (dThumbTip < dThumbIp) foldedFingers++;
+
+                // If 4 or more fingers are folded, it's a fist
+                if (foldedFingers >= 4) {
+                    detectedGesture = 'fist';
+                }
+
+                // 2. Track Hand Position (using wrist or middle finger MCP)
+                // MediaPipe coords: x (0-1), y (0-1). 
+                // x is mirrored if we flipped video, but landmarks usually match video stream.
+                // We want screen relative.
+                handPos.x = landmarks[9].x; // Middle finger MCP
+                handPos.y = landmarks[9].y;
+            }
+
+            // Stabilization
+            appState.gestureHistory.push(detectedGesture);
+            if (appState.gestureHistory.length > 10) {
+                appState.gestureHistory.shift();
+            }
+
+            // Majority Vote
+            const fistCount = appState.gestureHistory.filter(g => g === 'fist').length;
+            const openCount = appState.gestureHistory.length - fistCount;
+
+            const stableGesture = fistCount > openCount ? 'fist' : 'open';
+
+            // State Transition
+            if (stableGesture === 'fist' && appState.gesture !== 'fist') {
+                appState.gesture = 'fist';
+                appState.current = STATE.GATHER;
+                // Play sound
+                playChime();
+            } else if (stableGesture === 'open' && appState.gesture !== 'open') {
+                appState.gesture = 'open';
+                appState.current = STATE.RELEASE;
+                // Reset flags
+                appState.isCatFormed = false;
+                appState.catFormedTime = 0;
+                appState.easterEggTriggered = false;
+                // Hide texts
+                document.getElementById('cat-message').style.opacity = 0;
+                document.getElementById('easter-egg-msg').style.opacity = 0;
+                document.getElementById('warm-overlay').style.opacity = 0;
+            }
+
+            appState.handPosition = handPos;
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // Camera Setup
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 320,
+            height: 240
+        });
+        cameraUtils.start();
+
+
+        // =========================================
+        // Animation Loop
+        // =========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = clock.getElapsedTime();
+            const delta = clock.getDelta(); // Not used directly but good to have
+
+            // Update Particles
+            const posAttr = geometry.attributes.position;
+            const colAttr = geometry.attributes.color;
+
+            // Determine Target Positions based on State
+            let targetArr = galaxyPositions;
+            let moveSpeed = 0.03; // Lerp factor
+
+            if (appState.current === STATE.GATHER) {
+                targetArr = catPositions;
+                moveSpeed = 0.05; // Gather faster
+                
+                // Check if formed
+                if (!appState.isCatFormed) {
+                    // Simple check: if first particle is close enough
+                    const dx = posAttr.array[0] - catPositions[0];
+                    const dy = posAttr.array[1] - catPositions[1];
+                    if (Math.sqrt(dx*dx + dy*dy) < 5) {
+                        appState.isCatFormed = true;
+                        appState.catFormedTime = time;
+                        // Fade in message after 3 seconds
+                        setTimeout(() => {
+                            if (appState.current === STATE.GATHER) {
+                                document.getElementById('cat-message').style.opacity = 1;
+                            }
+                        }, 3000);
+                    }
+                }
+
+                // Breathing Effect (Brightness)
+                const breath = (Math.sin(time * 2) + 1) * 0.2 + 1.0; // 1.0 to 1.4
+                // We can't easily change brightness of standard material without uniform.
+                // But we can modulate bloom threshold or strength? 
+                // Or just rely on density.
+                // Let's pulse the bloom strength slightly.
+                bloomPass.strength = CONFIG.bloom.strength * breath;
+
+                // Easter Egg Check
+                // Hand in bottom center (x: 0.4-0.6, y > 0.8)
+                // Note: MediaPipe y increases downwards (0 top, 1 bottom)
+                if (appState.isCatFormed && !appState.easterEggTriggered) {
+                    if (time - appState.catFormedTime > 2) { // Wait a bit after forming
+                        const h = appState.handPosition;
+                        if (h.x > 0.4 && h.x < 0.6 && h.y > 0.75) {
+                            // Trigger Easter Egg
+                            appState.easterEggTriggered = true;
+                            document.getElementById('easter-egg-msg').style.opacity = 1;
+                            document.getElementById('warm-overlay').style.opacity = 1;
+                            
+                            // Fade out after 3s
+                            setTimeout(() => {
+                                document.getElementById('easter-egg-msg').style.opacity = 0;
+                                document.getElementById('warm-overlay').style.opacity = 0;
+                            }, 5000);
+                        }
+                    }
+                }
+
+            } else {
+                // RELEASE / IDLE
+                targetArr = galaxyPositions;
+                moveSpeed = 0.02; // Drift back slowly
+                bloomPass.strength = CONFIG.bloom.strength; // Reset bloom
+            }
+
+            // Update each particle
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                const ix = i * 3;
+                const iy = i * 3 + 1;
+                const iz = i * 3 + 2;
+
+                // 1. Get Target
+                let tx = targetArr[ix];
+                let ty = targetArr[iy];
+                let tz = targetArr[iz];
+
+                // 2. Add Floating Noise (only if in Galaxy mode or Cat mode needs subtle movement)
+                // We add noise to the TARGET, so they drift around the target
+                const noiseScale = 0.05;
+                const noiseSpeed = 0.5;
+                const nx = Math.sin(time * noiseSpeed + randomOffsets[ix]) * 2;
+                const ny = Math.cos(time * noiseSpeed + randomOffsets[iy]) * 2;
+                const nz = Math.sin(time * noiseSpeed + randomOffsets[iz]) * 2;
+
+                if (appState.current === STATE.GATHER) {
+                    // Less noise in cat form, tighter
+                    tx += nx * 0.2;
+                    ty += ny * 0.2;
+                    tz += nz * 0.2;
+                } else {
+                    // More float in galaxy
+                    tx += nx;
+                    ty += ny;
+                    tz += nz;
+                }
+
+                // 3. Lerp Position
+                posAttr.array[ix] += (tx - posAttr.array[ix]) * moveSpeed;
+                posAttr.array[iy] += (ty - posAttr.array[iy]) * moveSpeed;
+                posAttr.array[iz] += (tz - posAttr.array[iz]) * moveSpeed;
+            }
+
+            posAttr.needsUpdate = true;
+
+            // Render
+            composer.render();
+        }
+
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Start
+        animate();
+
+    </script>
+</body>
+</html>
